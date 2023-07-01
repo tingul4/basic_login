@@ -1,55 +1,53 @@
 const express = require('express')
 const exphbs = require('express-handlebars')
+const User = require('./models/user')
+const cookieParser = require('cookie-parser')
+const sessionIDGenerator = require('./utils/session_id_generator')
+require('./config/mongoose')
 
 const app = express()
-const users = [
- {
-   firstName: 'Tony',
-   email: 'tony@stark.com',
-   password: 'iamironman'
- },
- {
-   firstName: 'Steve',
-   email: 'captain@hotmail.com',
-   password: 'icandothisallday'
- },
- {
-   firstName: 'Peter',
-   email: 'peter@parker.com',
-   password: 'enajyram'
- },
- {
-   firstName: 'Natasha',
-   email: 'natasha@gamil.com',
-   password: '*parol#@$!'
- },
- {
-   firstName: 'Nick',
-   email: 'nick@shield.com',
-   password: 'password'
- }
-]
 
 app.engine('hbs', exphbs({ defaultLayout: 'main', extname: 'hbs' }))
 app.set('view engine', 'hbs')
 app.use(express.urlencoded({ extended: true }))
+app.use(cookieParser())
 
 app.get('/', (req, res) => {
-  res.render('index')
+  if (sessionID = req.cookies.sessionID) {
+    return User.findOne({ sessionID })
+            .then(user => {
+              res.render('user', { firstName: user.firstName })
+            })
+  }
+  
+  return res.render('index')
 })
 
 app.post('/login', (req, res) => {
   const email = req.body.email
   const password = req.body.password
-  let loginUser = users.filter(user => 
-    user.email === email && user.password === password
-  )
   
-  if (loginUser.length) {
-    return res.render('user', { loginUser })
-  } else {
-    return res.render('index')
-  }
+  return User.findOne({ email, password })
+    .then(user => {
+      if (!user)
+        return false
+      
+      const sessionID = sessionIDGenerator()
+      user.sessionID = sessionID
+      const loginUser = new User(user)
+      loginUser.save()
+      return user
+    })
+    .then(user => {
+      if (!user)
+        return res.redirect('/')
+      
+      return res.cookie('sessionID', user.sessionID).render('user', { firstName: user.firstName })
+    })
+})
+
+app.get('/logout', (req, res) => {
+  return res.clearCookie('sessionID').redirect('/')
 })
 
 app.listen(3000, () => {
